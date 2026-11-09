@@ -14,3 +14,5 @@
 6. get_featureNB15.py: Extracts 480-byte flow features (5 packets × 96 bytes), assigns attack labels using NB15 Ground Truth rules, and saves the results as NPY files.
 7. get_featureTONIoT.py: Extracts 480-byte flow features (5 packets × 96 bytes), assigns attack labels using TON_IoT Ground Truth matching, and saves the results as NPY files.
 8. merge_npy_across_parts.py: Merges class-specific NPY files from multiple NB15 data partitions into unified datasets.
+
+models:https://drive.google.com/drive/folders/1Lh4iAV98fvGBDTLf2i6tOZL2BZLPIX2P?usp=sharing
