@@ -26,11 +26,13 @@ from typing import Optional
 from typing import Dict, Optional
 import math
 from torch.utils.data import DataLoader, Subset
-from collections import Counter
 import optuna
 from optuna.samplers import TPESampler
-from optuna.pruners import ThresholdPruner
-from notebooks.util.data_preparing import evaluate_results
+from util.data_preparing import (
+    evaluate_test_data,
+    score_reconstruction,
+    select_validation_threshold,
+)
 # ============================================================
 # 1D data processing - remove the 2D transformation and keep only 1D loading
 # ============================================================
@@ -710,50 +712,22 @@ def objective(trial):
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
 
-    # ============================================================
-    # 3. Testing and evaluation (use reconstruction error as the score)
-    # ============================================================
-    model.eval()
-    scores = []
-    y_true = []
-
-    test_loader = DataLoader(test_subset, batch_size=bs, shuffle=False, num_workers=2, pin_memory=True)
-
-    with torch.no_grad():
-        for x, y in test_loader:
-            x = x.to(cfg.device, non_blocking=True)
-
-            recon, _ = model(x)
-
-            # anomaly score = reconstruction MSE per-sample
-            s = (recon - x).pow(2).flatten(1).mean(1)
-
-            scores.append(s.detach().cpu().numpy())
-            y_true.append(y.numpy())
-
-    test_score = np.concatenate(scores, axis=0)
-    y_true = np.concatenate(y_true, axis=0)
-
-    print("[DEBUG] y_eval distribution:", Counter(y_true.tolist()))
-
-    # Evaluation results
-    test_metrics = evaluate_results(y_true, test_score)
-    print(f"[DEBUG] AUROC: {test_metrics['auroc']:.4f}, F1: {test_metrics['f1']:.4f}")
-    # Record Optuna attributes
-    trial.set_user_attr("f1", test_metrics['f1'])
-    trial.set_user_attr("auroc", test_metrics['auroc'])
+    validation_scores, _ = score_reconstruction(model, val_loader, cfg.device)
+    threshold = select_validation_threshold(validation_scores)
+    trial.set_user_attr("validation_threshold", threshold)
     trial.set_user_attr("epochs", epoch + 1)
 
     # Save the model
     torch.save({
         "state_dict": model.state_dict(),
-        "cfg": cfg.__dict__
+        "cfg": cfg.__dict__,
+        "validation_threshold": threshold,
     }, f'{save_dir}/models/AE_trial_{trial.number}.pt')
 
-    del model, test_loader
+    del model
     torch.cuda.empty_cache()
 
-    return test_metrics['f1']
+    return best
 
 if __name__ == "__main__":
     train_ds = SplitFolderNpyDataset(
@@ -805,24 +779,45 @@ if __name__ == "__main__":
     # )
 
     epochs = 100
-    save_dir = './results_AEViT_image_2018_96_5_700000_1/SVDD_image/optuna/'
+    save_dir = './results_AEViT_image_2018_96_5_700000_1/SVDD_image/optuna_validation_mse/'
     study_storage = 'results_AEViT_image_2018_96_5_700000_1/SVDD_image.db'
-    study_name = 'SVDD_image-optuna-torch-NF'
+    study_name = 'SVDD_image-validation-mse'
 
     os.makedirs(save_dir, exist_ok=True)
     os.makedirs(os.path.join(save_dir, "models"), exist_ok=True)
 
     study = optuna.create_study(
         study_name=study_name,
-        direction='maximize',
+        direction='minimize',
         sampler=TPESampler(n_startup_trials=10, n_ei_candidates=24, multivariate=True),
-        pruner=ThresholdPruner(lower=0.5),
         storage=f'sqlite:///{study_storage}',
         load_if_exists=True
     )
 
     study.optimize(objective,  timeout= 10* 60 * 60)
 
+    best_trial = study.best_trial
+    checkpoint_path = os.path.join(save_dir, "models", f"AE_trial_{best_trial.number}.pt")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    cfg = ViTAutoencoderConfig(**checkpoint["cfg"])
+    model = build_model(cfg).to(cfg.device)
+    model.load_state_dict(checkpoint["state_dict"])
+
+    test_loader = DataLoader(
+        test_subset,
+        batch_size=best_trial.params["batch_size"],
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
+    )
+    test_scores, test_labels = score_reconstruction(model, test_loader, cfg.device)
+    test_metrics = evaluate_test_data(
+        test_labels, test_scores, checkpoint["validation_threshold"]
+    )
+    pd.DataFrame([test_metrics]).to_csv(
+        os.path.join(save_dir, "best_trial_test_metrics.csv"), index=False
+    )
+
     results = study.trials_dataframe()
-    results.sort_values(by=['value'], inplace=True, ascending=False)
+    results = results.loc[results["state"] == "COMPLETE"].sort_values("value")
     results.to_csv(f'{save_dir}/result_imgSVDD.csv')

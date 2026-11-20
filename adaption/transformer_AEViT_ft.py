@@ -4,7 +4,6 @@ import numpy as np
 import random
 import torch
 from torch.utils.data import  DataLoader, Subset
-from notebooks.util.data_preparing import  evaluate_results
 from torchvision import datasets, transforms
 from sklearn.model_selection import train_test_split
 from sklearn.manifold import TSNE
@@ -13,7 +12,12 @@ import os
 import torch
 import torch.nn.functional as F
 from transformer_AEViT_1D import ViTAutoencoderConfig, build_model, pretrain_one_epoch, validate,SplitFolderNpyDataset,build_split_and_balance_dataset
-from notebooks.util.data_preparing import  evaluate_results,evaluate_test_data, plot_confusion_matrix
+from util.data_preparing import (
+    evaluate_test_data,
+    plot_confusion_matrix,
+    score_reconstruction,
+    select_validation_threshold,
+)
 from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner, ThresholdPruner
 import time
@@ -35,7 +39,6 @@ from typing import Optional
 from typing import Dict, Optional
 import math
 from torch.utils.data import DataLoader, Subset
-from collections import Counter
 
 
 SPLIT_SEED = 42
@@ -132,10 +135,12 @@ train_subset, test_subset, benign_idx_train = build_split_and_balance_dataset(
 
 
 
-result_csv = 'results_AEViT_image_2018_96_5_1000000_1/SVDD_image/optuna/result_imgSVDD.csv'
-model_dir = 'results_AEViT_image_2018_96_5_1000000_1/SVDD_image/optuna/models/'
-# input_file = 'data/NF-CICIDS2018-v3.parquet'
-
+pretrain_root = os.getenv(
+    "TRANIDS_PRETRAIN_ROOT",
+    "results_AEViT_image_2018_96_5_1000000_1/SVDD_image/optuna",
+)
+result_csv = os.path.join(pretrain_root, "result_imgSVDD.csv")
+model_dir = os.path.join(pretrain_root, "models")
 
 df = pd.read_csv(result_csv)
 top_trials = df.head(1)
@@ -363,38 +368,16 @@ for run_seed in SEEDS:
         if best_state is not None:
             model.load_state_dict(best_state)
 
+        validation_scores, _ = score_reconstruction(model, val_loader, cfg.device)
+        threshold = select_validation_threshold(validation_scores)
         ft_ckpt = {
+            "validation_threshold": threshold,
             "state_dict": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
             "cfg": model.cfg.__dict__,
         }
         torch.save(ft_ckpt, os.path.join(ft_save_dir, f"SVDD_ft_trial_{trial_number}_{run_seed}.pt"))
 
-        model.eval()
-        scores = []
-        y_true = []
-
-        with torch.no_grad():
-            for x, y in test_loader:
-                x = x.to(cfg.device, non_blocking=True)
-
-                recon, _ = model(x)
-
-                # anomaly score = reconstruction MSE per-sample
-                s = (recon - x).pow(2).flatten(1).mean(1)
-
-                scores.append(s.detach().cpu().numpy())
-                y_true.append(y.numpy())
-
-        test_score = np.concatenate(scores, axis=0)
-        y_true = np.concatenate(y_true, axis=0)
-
-        print("[DEBUG] y_eval distribution:", Counter(y_true.tolist()))
-
-        # Evaluation results
-        test_metrics = evaluate_results(y_true, test_score)
-        print(f"[DEBUG] AUROC: {test_metrics['auroc']:.4f}, F1: {test_metrics['f1']:.4f}")
-
-        threshold = test_metrics['threshold']
+        test_score, y_true = score_reconstruction(model, test_loader, cfg.device)
         results = evaluate_test_data(y_true, test_score, threshold)
 
 

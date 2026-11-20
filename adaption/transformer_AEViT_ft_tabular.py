@@ -2,7 +2,6 @@ import os
 import random
 import time
 from pathlib import Path
-from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -10,8 +9,9 @@ import torch
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
 
-from notebooks.util.data_preparing import (
-    evaluate_results,
+from util.data_preparing import (
+    score_reconstruction,
+    select_validation_threshold,
     evaluate_test_data,
     plot_confusion_matrix,
 )
@@ -202,7 +202,9 @@ print("benign_idx_train:", benign_idx_train)
 shape_tag = f"{INPUT_MODE}_{PACKET_SHAPE[0]}x{PACKET_SHAPE[1]}_patch{PATCH_SIZE}"
 
 # By default, this corresponds to the output folder of transformer_AEViT_1D_parquet_tabular.py
-PRETRAIN_ROOT = f"./results_AEViT_tabular_parquet_2018/AEViT/optuna"
+PRETRAIN_ROOT = os.getenv(
+    "TRANIDS_PRETRAIN_ROOT", "./results_AEViT_tabular_parquet_2018/AEViT/optuna"
+)
 
 result_csv = f"{PRETRAIN_ROOT}/result_AEViT.csv"
 model_dir = f"{PRETRAIN_ROOT}/models"
@@ -443,7 +445,10 @@ for run_seed in SEEDS:
         if best_state is not None:
             model.load_state_dict(best_state)
 
+        validation_scores, _ = score_reconstruction(model, val_loader, cfg.device)
+        threshold = select_validation_threshold(validation_scores)
         ft_ckpt = {
+            "validation_threshold": threshold,
             "state_dict": {
                 k: v.detach().cpu().clone()
                 for k, v in model.state_dict().items()
@@ -463,30 +468,7 @@ for run_seed in SEEDS:
         )
         torch.save(ft_ckpt, ft_model_path)
 
-        model.eval()
-        scores = []
-        y_true = []
-
-        with torch.no_grad():
-            for x, y in test_loader:
-                x = x.to(cfg.device, non_blocking=True)
-                recon, _ = model(x)
-
-                # anomaly score = reconstruction MSE per sample
-                s = (recon - x).pow(2).flatten(1).mean(1)
-
-                scores.append(s.detach().cpu().numpy())
-                y_true.append(y.numpy())
-
-        test_score = np.concatenate(scores, axis=0)
-        y_true = np.concatenate(y_true, axis=0)
-
-        print("[DEBUG] y_eval distribution:", Counter(y_true.tolist()))
-
-        test_metrics = evaluate_results(y_true, test_score)
-        print(f"[DEBUG] AUROC: {test_metrics['auroc']:.4f}, F1: {test_metrics['f1']:.4f}")
-
-        threshold = test_metrics["threshold"]
+        test_score, y_true = score_reconstruction(model, test_loader, cfg.device)
         results = evaluate_test_data(y_true, test_score, threshold)
 
         plot_confusion_matrix(y_true, test_score, threshold, pos_label=-1)

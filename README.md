@@ -8,6 +8,12 @@
 4. [transformer_AEViT_ft_tabular.py](adaption/transformer_AEViT_ft_tabular.py): Fine-tunes the pretrained tabular model.
 5. [transformer_AEViT_ft_attack_opposite.py](adaption/transformer_AEViT_ft_attack_opposite.py): Runs the source-to-target fine-tuning experiment with source attack samples.
 
+### Evaluation protocol
+
+The adaptation scripts calibrate the anomaly threshold from benign validation reconstruction errors. The default target validation false-positive rate is 5%. Samples with scores at or above the threshold are classified as attacks. Test metrics use the frozen threshold.
+
+Pretraining ranks Optuna trials by validation MSE and evaluates only the selected checkpoint on the test split. New pretraining artifacts are written under `optuna_validation_mse/`. Set `TRANIDS_PRETRAIN_ROOT` to that directory when using a new checkpoint with either standard fine-tuning script.
+
 ## PCAP extraction
 
 1. [edit_pcaps_relative.ps1](extractor/edit_pcaps_relative.ps1): Converts raw network capture files into standardized PCAP format using EditCap.

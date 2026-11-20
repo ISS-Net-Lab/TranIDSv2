@@ -20,17 +20,13 @@ from transformer_AEViT_1D import (
     build_split_and_balance_dataset
 )
 
-from notebooks.util.data_preparing import (
-    evaluate_results,
+from util.data_preparing import (
+    select_validation_threshold,
     evaluate_test_data,
     plot_confusion_matrix
 )
 
-from notebooks.util.azure_upload import (
-    upload_directory_to_azure
-)
-
-from notebooks.util.clean_ram_npy import (
+from util.clean_ram_npy import (
     drop_large_npy_file_cache,
     show_mem
 )
@@ -137,7 +133,6 @@ FT_LAYER_CONFIGS = {
 RESULTS_ROOT = Path("./results_attack_ratio_AEViT")
 
 
-SAS_URL = "https://zbstore2026.blob.core.windows.net/g-019c8c9c-ae28-70d7-8553-5c609e020009?se=2026-09-14T06%3A47%3A11Z&sp=rwdl&sv=2026-02-06&sr=c&sig=J8IlN97FxjsBw7cQrPhqYBIWV33puDkw9Kw10ro/kKc%3D"
 
 AZURE_BASE_PREFIX = "pcap_experiments/c6"
 
@@ -431,7 +426,8 @@ def find_top_aevit_pretrain_trials(
     # --------------------------------------------------------
     if "value" in df.columns:
         df = df.dropna(subset=["value"]).copy()
-        df = df.sort_values(by="value", ascending=False).reset_index(drop=True)
+        lower_is_better = "user_attrs_validation_threshold" in df.columns
+        df = df.sort_values(by="value", ascending=lower_is_better).reset_index(drop=True)
 
     top_trials = df.head(top_k).copy()
 
@@ -1837,7 +1833,14 @@ def run_one_finetune_task(
                     f"_trial_{trial_number}_seed_{run_seed}.pt"
                 )
 
+                validation_scores = compute_aevit_reconstruction_scores(
+                    model=model,
+                    loader=target_val_loader,
+                    device=DEVICE,
+                )
+                threshold = select_validation_threshold(validation_scores)
                 ft_ckpt = {
+                    "validation_threshold": threshold,
                     "state_dict": {
                         name: value.detach().cpu().clone()
                         for name, value in base_model.state_dict().items()
@@ -1883,9 +1886,6 @@ def run_one_finetune_task(
                         f"test_score length != y_test_tgt length: "
                         f"{len(test_score)} != {len(y_test_tgt)}"
                     )
-
-                test_metrics = evaluate_results(y_test_tgt, test_score)
-                threshold = test_metrics["threshold"]
 
                 results = evaluate_test_data(
                     y_test_tgt,
@@ -2062,10 +2062,12 @@ def run_one_finetune_task(
     # --------------------------------------------------------
 
     if upload_to_azure:
+        from util.azure_upload import upload_directory_to_azure
+
         azure_prefix = f"{AZURE_BASE_PREFIX}/{task_name}"
 
         upload_result = upload_directory_to_azure(
-            sas_url=SAS_URL,
+            sas_url=os.environ["TRANIDS_AZURE_SAS_URL"],
             local_dir=task_output_dir,
             azure_prefix=azure_prefix,
             max_workers=4,
