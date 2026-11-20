@@ -2,8 +2,8 @@
 # CONFIG
 # ============================
 
-# Use the folder containing this .ps1 file as the project root.
-$ROOT = $PSScriptRoot
+# Resolve data and local tools from the project root.
+$ROOT = Split-Path -Parent $PSScriptRoot
 
 $NORMAL_DIR = Join-Path $ROOT "normal_pcaps"
 $ATTACK_DIR = Join-Path $ROOT "normal_attack_pcaps"
@@ -14,7 +14,7 @@ $ATTACK_DIR = Join-Path $ROOT "normal_attack_pcaps"
 # ============================
 
 # Locate editcap automatically:
-# 1) editcap.exe beside this script
+# 1) editcap.exe in the project root
 # 2) editcap.exe available in PATH
 # 3) standard Wireshark installation under %ProgramFiles%
 
@@ -91,7 +91,7 @@ if (!$EDITCAP -or !(Test-Path $EDITCAP)) {
     Write-Host "[ERROR] editcap.exe was not found."
     Write-Host ""
     Write-Host "Install Wireshark, add editcap.exe to PATH,"
-    Write-Host "or place editcap.exe beside this script."
+    Write-Host "or place editcap.exe in the project root."
 
     exit 1
 }
@@ -165,19 +165,19 @@ if (!$normalExists -and !$attackExists) {
 #
 # <current folder>\
 #
-# ├── normal_pcaps\
-# │   ├── xxx.pcap
-# │   ├── xxx.pcap
-# │   └── ...
-# │
-# └── normal_attack_pcaps\
-#     ├── normal_DDoS\
-#     │   ├── xxx.pcap
-#     │   └── ...
-#     │
-#     ├── normal_DoS\
-#     ├── normal_scanning\
-#     └── ...
+# +-- normal_pcaps\
+# |   +-- xxx.pcap
+# |   +-- xxx.pcap
+# |   +-- ...
+# |
+# +-- normal_attack_pcaps\
+#     +-- normal_DDoS\
+#     |   +-- xxx.pcap
+#     |   +-- ...
+#     |
+#     +-- normal_DoS\
+#     +-- normal_scanning\
+#     +-- ...
 #
 # We intentionally do NOT recurse into generated "flows" folders.
 

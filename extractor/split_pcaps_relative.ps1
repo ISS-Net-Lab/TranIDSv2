@@ -2,13 +2,13 @@
 # CONFIG
 # ============================
 
-# Use the folder containing this .ps1 file as the project root.
-$ROOT = $PSScriptRoot
+# Resolve data and local tools from the project root.
+$ROOT = Split-Path -Parent $PSScriptRoot
 
 $NORMAL_DIR = Join-Path $ROOT "normal_pcaps"
 $ATTACK_DIR = Join-Path $ROOT "normal_attack_pcaps"
 
-# SplitCap.exe is expected beside this script.
+# SplitCap.exe is expected in the project root.
 $SPLITCAP = Join-Path $ROOT "SplitCap.exe"
 
 $FLOW_DIR_NAME = "flows"
@@ -127,18 +127,18 @@ if (!$normalExists -and !$attackExists) {
 #
 # <current folder>\
 #
-# ├── normal_pcaps\
-# │   ├── xxx.pcap
-# │   └── ...
-# │
-# └── normal_attack_pcaps\
-#     ├── normal_DDoS\
-#     │   ├── xxx.pcap
-#     │   └── ...
-#     │
-#     ├── normal_DoS\
-#     ├── normal_scanning\
-#     └── ...
+# +-- normal_pcaps\
+# |   +-- xxx.pcap
+# |   +-- ...
+# |
+# +-- normal_attack_pcaps\
+#     +-- normal_DDoS\
+#     |   +-- xxx.pcap
+#     |   +-- ...
+#     |
+#     +-- normal_DoS\
+#     +-- normal_scanning\
+#     +-- ...
 #
 # We only inspect original-data levels.
 # Generated files inside "flows" will NOT be split again.

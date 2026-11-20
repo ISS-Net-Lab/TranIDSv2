@@ -14,9 +14,9 @@ import pandas as pd
 PCAP_ROOT = os.environ.get("PCAP_ROOT", "/home/didik/data_preprocess/pcaps 22-1-2015-0/flows")
 
 # ===== [MOD] NEW: output naming / output root from env =====
-# OUT_PREFIX: 由 .sh 傳入（通常是 archive 的檔名去掉 .7z），用於避免輸出覆蓋
+# Use an archive-specific prefix to avoid overwriting output.
 OUT_PREFIX = os.environ.get("OUT_PREFIX", "").strip()
-# OUT_PARENT: 若你希望集中輸出到某個根目錄；不設就用 save_to / 預設 directory
+# Set an output root or use the default output directory.
 OUT_PARENT = os.environ.get("OUT_PARENT", "").strip()
 
 def _glob_5tuple_pcaps_all(pcap_root: str):

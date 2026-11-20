@@ -2,8 +2,8 @@
 # CONFIG
 # ============================
 
-# Folder containing this .ps1 is the project root.
-$ROOT = $PSScriptRoot
+# Resolve data and local tools from the project root.
+$ROOT = Split-Path -Parent $PSScriptRoot
 
 $NORMAL_DIR = Join-Path $ROOT "normal_pcaps"
 $ATTACK_DIR = Join-Path $ROOT "normal_attack_pcaps"
@@ -54,7 +54,7 @@ $DELETE_SOURCE_GROUP_AFTER_SUCCESS = $true
 
 $SEVENZIP = $null
 
-# 1. 7z.exe beside this script.
+# 1. 7z.exe in the project root.
 $local7z = Join-Path $ROOT "7z.exe"
 
 if (Test-Path $local7z) {
@@ -141,7 +141,7 @@ if (!$SEVENZIP -or !(Test-Path $SEVENZIP)) {
     Write-Host "[ERROR] 7z.exe was not found."
     Write-Host ""
     Write-Host "Install 7-Zip, add 7z.exe to PATH,"
-    Write-Host "or place 7z.exe beside this script."
+    Write-Host "or place 7z.exe in the project root."
 
     exit 1
 }

@@ -5,50 +5,49 @@ set -euo pipefail
 # CONFIG
 # =========================================================
 
-# All paths below are based on the folder containing this .sh file.
-# Therefore the script can be moved together with the project folder
-# without editing absolute /home/... paths.
+# Resolve data paths from the project root.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# 由 pack_flows.ps1 產生的 TON_IoT 7z 根目錄。
-# find 會遞迴搜尋，因此可支援：
+# Root of the archives produced by pack_flows_relative.ps1.
+# Search nested archive directories.
 #   _packed_7z/normal_pcaps/*.7z
 #   _packed_7z/normal_attack_pcaps/normal_DDoS/*.7z
 #   _packed_7z/normal_attack_pcaps/normal_scanning/*.7z
 #   ...
-PACKED_ROOT="$SCRIPT_DIR/_packed_7z"
+PACKED_ROOT="$PROJECT_ROOT/_packed_7z"
 
-# 修改後的 TON_IoT getfeature
+# TON_IoT feature extractor.
 PY="$SCRIPT_DIR/get_featureTONIoT.py"
 
-# TON_IoT Ground Truth CSV 所在資料夾：
+# Directory containing GroundTruth_Network_*.csv files.
 #   GroundTruth_Network_1.csv
 #   GroundTruth_Network_2.csv`
 #   ...
-GT_ROOT="$SCRIPT_DIR/SecurityEvents_Network_datasets"
+GT_ROOT="$PROJECT_ROOT/SecurityEvents_Network_datasets"
 
-# 解壓縮暫存根目錄。每個 archive 處理完會刪除。
-EXTRACT_PARENT="$SCRIPT_DIR/_extract_toniot"
+# Temporary extraction root.
+EXTRACT_PARENT="$PROJECT_ROOT/_extract_toniot"
 
-# feature 輸出根目錄
-OUT_PARENT="$SCRIPT_DIR/feature_out_toniot"
+# Feature output directory.
+OUT_PARENT="$PROJECT_ROOT/feature_out_toniot"
 
-# log 目錄
-TEMP="$SCRIPT_DIR/temp_toniot"
+# Log directory.
+TEMP="$PROJECT_ROOT/temp_toniot"
 
 # Python environment
-PYTHON_BIN="$SCRIPT_DIR/venv/bin/python3"
+PYTHON_BIN="$PROJECT_ROOT/venv/bin/python3"
 
-# Ground Truth timestamp tolerance（秒）
-# 目前 get_featureTONIoT.py 的預設也是 1.0。
-# 建議先跑少量資料確認 timestamp 差值，再決定是否改為 0.1 / 0.01 等。
+# Ground-truth timestamp tolerance in seconds.
+
+
 GT_TIME_TOLERANCE="1.0"
 
-# Ground Truth CSV 第一次建立 cache 時，每次讀取的 row 數。
+# CSV chunk size for the initial cache build.
 GT_CSV_CHUNK_ROWS="200000"
 
-# 0 = 使用既有 Ground Truth cache（建議）
-# 1 = 強制重新建立 SQLite / attack index cache
+# Set to 1 to rebuild the SQLite and attack index caches.
+
 GT_REBUILD_CACHE="0"
 
 # =========================================================
@@ -171,13 +170,13 @@ for z in "${ARCHIVES[@]}"; do
     base="$(basename "$z")"
     name="${base%.7z}"
 
-    # 原始 category 通常就是 archive 的父資料夾，例如：
+    # Start with the archive parent as the capture category.
     #   normal_pcaps
     #   normal_DDoS
     #   normal_scanning
     parent_name="$(basename "$(dirname "$z")")"
 
-    # 先使用父資料夾判斷；若不認得，再從 archive 名稱判斷。
+    # Fall back to the archive name if the parent is unrecognized.
     if capture_attack_type="$(infer_capture_attack_type "$parent_name")"; then
         :
     elif capture_attack_type="$(infer_capture_attack_type "$name")"; then
@@ -191,12 +190,12 @@ for z in "${ARCHIVES[@]}"; do
         exit 1
     fi
 
-    # 每個 archive 使用獨立解壓目錄。
-    # 加入 category，避免不同 folder 中有同名 archive 時互相碰撞。
+    # Include the category in extraction paths to avoid collisions.
+
     safe_parent="${parent_name// /_}"
     outdir="$EXTRACT_PARENT/${safe_parent}__${name}"
 
-    # Log 名稱也包含 category，避免同名 archive 覆蓋。
+    # Include the category in log filenames.
     log_prefix="${safe_parent}__${name}"
 
     echo "=========================================================================="
@@ -235,30 +234,30 @@ for z in "${ARCHIVES[@]}"; do
     # Important environment variables:
     #
     # PCAP_ROOT
-    #   本次解壓後的 SplitCap flow PCAP root
+    # Root of the extracted flow PCAPs.
     #
     # OUT_PREFIX
-    #   archive 名稱，例如 normal_DDoS-1
+    # Archive name without the extension.
     #
     # OUT_PARENT
-    #   feature 輸出根目錄
+    # Feature output directory.
     #
     # GT_ROOT
-    #   所有 GroundTruth_Network_*.csv 所在目錄
+    # Ground-truth CSV directory.
     #
     # CAPTURE_ATTACK_TYPE
-    #   folder-level candidate：ddos / scanning / benign / ...
-    #   getfeature 只會查該 attack type 的 Ground Truth rows；
-    #   flow 匹配不到則標為 benign。
+    #   folder-level candidate:ddos / scanning / benign / ...
+    # Restrict ground-truth matching to this attack type; label unmatched flows benign.
+
     #
     # GT_TIME_TOLERANCE
-    #   flow first-packet timestamp 與 GT ts 的容許差值
+    # Tolerance between the first packet and ground-truth timestamps.
     #
     # GT_CSV_CHUNK_ROWS
-    #   第一次建立 Ground Truth SQLite cache 時的 chunksize
+    # CSV chunk size for the initial cache build.
     #
     # GT_REBUILD_CACHE
-    #   是否強制重建 Ground Truth cache
+    # Whether to rebuild the ground-truth cache.
     # -----------------------------------------------------
 
     echo "[2] Running get_featureTONIoT.py ..."
@@ -274,7 +273,7 @@ for z in "${ARCHIVES[@]}"; do
         "$PYTHON_BIN" "$PY" \
         2>&1 | tee "$TEMP/${log_prefix}_feature.log"
 
-    # pipefail 已啟用：若 Python 失敗，即使 tee 成功，整條 pipeline 仍會失敗。
+    # Use pipefail to propagate Python failures through tee.
 
     # -----------------------------------------------------
     # 3. Delete extracted PCAPs

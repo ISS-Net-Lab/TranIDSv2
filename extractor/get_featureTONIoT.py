@@ -27,8 +27,8 @@ from scapy.error import Scapy_Exception
 # SCRIPT DIRECTORY
 # =========================================================
 
-# All default paths are relative to the folder containing this Python file.
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Resolve default data paths from the project root.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # =========================================================
@@ -36,29 +36,26 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # =========================================================
 
 # ---------------------------------------------------------
-# 解壓後其中一個 7z 的 PCAP root
+# Root of the extracted flow PCAPs.
 #
-# 正常情況由 .sh 傳入：
 #
 # PCAP_ROOT="$outdir"
 # ---------------------------------------------------------
 
 PCAP_ROOT = os.environ.get(
     "PCAP_ROOT",
-    os.path.join(SCRIPT_DIR, "temp_extract")
+    os.path.join(PROJECT_ROOT, "temp_extract")
 ).strip()
 
 
 # ---------------------------------------------------------
-# Archive 名稱，不包含 .7z
+# Archive name without the .7z extension.
 #
-# 例如：
 #
 # normal_DDoS-1
 # normal_DDoS-2
 # normal_scanning-1
 #
-# 正常情況由 .sh 傳入
 # ---------------------------------------------------------
 
 OUT_PREFIX = os.environ.get(
@@ -68,19 +65,18 @@ OUT_PREFIX = os.environ.get(
 
 
 # ---------------------------------------------------------
-# Feature 輸出根目錄
+# Feature output root.
 # ---------------------------------------------------------
 
 OUT_PARENT = os.environ.get(
     "OUT_PARENT",
-    os.path.join(SCRIPT_DIR, "feature_out_toniot")
+    os.path.join(PROJECT_ROOT, "feature_out_toniot")
 ).strip()
 
 
 # ---------------------------------------------------------
-# Ground Truth CSV 所在資料夾
+# Ground-truth CSV directory.
 #
-# 裡面應該有：
 #
 # GroundTruth_Network_1.csv
 # GroundTruth_Network_2.csv
@@ -91,14 +87,13 @@ OUT_PARENT = os.environ.get(
 
 GT_ROOT = os.environ.get(
     "GT_ROOT",
-    os.path.join(SCRIPT_DIR, "SecurityEvents_GroundTruth_datasets")
+    os.path.join(PROJECT_ROOT, "SecurityEvents_GroundTruth_datasets")
 ).strip()
 
 
 # ---------------------------------------------------------
-# 可由 SH 明確傳入 capture attack type
+# Set the capture attack type or infer it from the paths.
 #
-# 可以填：
 #
 # normal_DDoS
 # ddos
@@ -106,12 +101,10 @@ GT_ROOT = os.environ.get(
 # scanning
 # ...
 #
-# 如果不提供，程式會嘗試從：
 #
 # OUT_PREFIX
 # PCAP_ROOT
 #
-# 自動判斷
 # ---------------------------------------------------------
 
 CAPTURE_ATTACK_TYPE_ENV = os.environ.get(
@@ -129,17 +122,14 @@ CAPTURE_ATTACK_TYPE_ENV = os.environ.get(
 # PCAP:
 # pkt.time = 156xxxxxxx.xxxxxx
 #
-# 預設先使用 1 秒。
+# Ground-truth timestamp tolerance in seconds.
 #
-# 建議之後驗證 GT timestamp 與 PCAP timestamp 的差距，
-# 再決定是否改成：
 #
 # 0.001
 # 0.01
 # 0.1
 # 1.0
 #
-# SH 可以：
 #
 # GT_TIME_TOLERANCE=0.1
 # ---------------------------------------------------------
@@ -153,9 +143,8 @@ GT_TIME_TOLERANCE = float(
 
 
 # ---------------------------------------------------------
-# 一次讀多少 Ground Truth CSV rows
+# Read ground-truth CSVs in chunks to limit memory use.
 #
-# 避免一次把約 1 GB CSV 全部塞進 RAM
 # ---------------------------------------------------------
 
 GT_CSV_CHUNK_ROWS = int(
@@ -167,7 +156,7 @@ GT_CSV_CHUNK_ROWS = int(
 
 
 # ---------------------------------------------------------
-# 強制重建 Ground Truth cache
+# Force a ground-truth cache rebuild.
 #
 # GT_REBUILD_CACHE=1
 # ---------------------------------------------------------
@@ -186,11 +175,8 @@ GT_REBUILD_CACHE = (
 # =========================================================
 
 #
-# 左邊：
-# 原始 PCAP folder / archive 名稱
+# Map capture folder or archive names to ground-truth attack types.
 #
-# 右邊：
-# Ground Truth CSV 的 type 欄位
 #
 
 FOLDER_TO_ATTACK = {
@@ -206,11 +192,11 @@ FOLDER_TO_ATTACK = {
     "normal_backdoor": "backdoor",
     "normal_ransomware": "ransomware",
 
-    # TON_IoT 某些 folder 的 normal 在後面
+    # Handle names ending in normal.
     "injection_normal": "injection",
     "mitm_normal": "mitm",
 
-    # 額外兼容
+    # Accept additional naming variants.
     "normal_injection": "injection",
     "normal_mitm": "mitm",
     "normal_password": "password",
@@ -236,14 +222,7 @@ KNOWN_ATTACK_TYPES = {
 # =========================================================
 
 def find_flow_pcaps(pcap_root: str):
-    """
-    遞迴尋找解壓後所有 PCAP flow。
-
-    支援：
-        *.pcap
-        *.pcapng
-        *.cap
-    """
+    """Find extracted flow PCAPs recursively."""
 
     patterns = [
         "*.pcap",
@@ -549,8 +528,7 @@ class GroundTruthStore:
         # -----------------------------------------
         # Calculate source signature
         #
-        # 如果 CSV 數量 / 大小 / 修改時間有改，
-        # cache 自動重建。
+        # Rebuild the cache when its input CSVs change.
         # -----------------------------------------
 
         self.source_signature = (
@@ -2507,7 +2485,7 @@ class Get_TONIoT_del(
         # -----------------------------------------
         # Fixed flow length:
         #
-        # 96 × 5 = 480
+        # 96 x 5 = 480
         # -----------------------------------------
 
         size = (
